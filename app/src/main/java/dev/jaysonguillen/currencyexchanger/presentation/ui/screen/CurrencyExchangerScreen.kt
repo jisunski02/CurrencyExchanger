@@ -17,6 +17,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -31,6 +32,8 @@ import dev.jaysonguillen.currencyexchanger.presentation.ui.section.CurrencyExcha
 import dev.jaysonguillen.currencyexchanger.presentation.ui.section.MyBalancesSection
 import dev.jaysonguillen.currencyexchanger.presentation.ui.theme.Color_Blue
 import dev.jaysonguillen.currencyexchanger.presentation.viewmodel.CurrencyExchangerViewModel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Preview(showBackground = true)
 @Composable
@@ -51,6 +54,8 @@ fun CurrencyConverterScreen(viewModel: CurrencyExchangerViewModel = hiltViewMode
     var soldAmount by remember { mutableDoubleStateOf(0.0) }
     var receivedAmount by remember { mutableDoubleStateOf(0.0) }
 
+    val scope = rememberCoroutineScope()
+
     Column{
         Header()
         MyBalancesSection(
@@ -59,7 +64,12 @@ fun CurrencyConverterScreen(viewModel: CurrencyExchangerViewModel = hiltViewMode
             onSubmit = { currencyExchange ->
                 viewModel.calculateCommission(currencyExchange.soldAmount)
                 viewModel.saveCurrencyExchange(currencyExchange)
-                viewModel.updateBalance(currencyExchange.soldCurrency, currencyExchange.currentBalance)
+
+                scope.launch {
+                    delay(2000)
+                    viewModel.updateBalance(currencyExchange.soldCurrency, currencyExchange.currentBalance - commission.value)
+                }
+
                 viewModel.updateBalance(currencyExchange.receivedCurrency, currencyExchange.receivedAmount)
 
                 soldAmount = currencyExchange.soldAmount
