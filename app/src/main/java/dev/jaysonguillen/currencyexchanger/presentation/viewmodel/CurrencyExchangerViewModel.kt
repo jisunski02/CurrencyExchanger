@@ -1,18 +1,19 @@
 package dev.jaysonguillen.currencyexchanger.presentation.viewmodel
 
-import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.jaysonguillen.currencyexchanger.data.model.CurrencyExchange
-import dev.jaysonguillen.currencyexchanger.data.model.ExchangeRatesResponse
-import dev.jaysonguillen.currencyexchanger.data.model.MyBalances
 import dev.jaysonguillen.currencyexchanger.domain.CurrencyExchangeUseCase
+import dev.jaysonguillen.currencyexchanger.presentation.intent.CurrencyExchangerIntent
+import dev.jaysonguillen.currencyexchanger.presentation.state.CurrencyExchangeUiState
+import dev.jaysonguillen.currencyexchanger.presentation.state.CurrencyExchangerState
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -22,27 +23,32 @@ class CurrencyExchangerViewModel @Inject constructor(
     private val currencyExchangeUseCase: CurrencyExchangeUseCase
 ) : ViewModel() {
 
-    private val _currencyRates = MutableStateFlow(ExchangeRatesResponse())
-    val currencyRates: StateFlow<ExchangeRatesResponse> = _currencyRates.asStateFlow()
-
-    private val _myBalances = MutableStateFlow<List<MyBalances>>(emptyList())
-    val myBalances: StateFlow<List<MyBalances>> = _myBalances.asStateFlow()
-
-    private val _currencyExchange = MutableStateFlow<List<CurrencyExchange>>(emptyList())
-    val currencyExchange: StateFlow<List<CurrencyExchange>> = _currencyExchange.asStateFlow()
-
-    private val _commission = MutableStateFlow(0.0)
-    val commission: StateFlow<Double> = _commission.asStateFlow()
+    private val _state = MutableStateFlow(CurrencyExchangerState())
+    val state: StateFlow<CurrencyExchangerState> = _state.asStateFlow()
 
     private var pollingJob: Job? = null
 
     init {
-        startPolling()
-        fetchBalances()
-        fetchCurrencyExchanges()
+        processIntent(CurrencyExchangerIntent.StartPolling)
+        processIntent(CurrencyExchangerIntent.FetchBalances)
+        processIntent(CurrencyExchangerIntent.FetchCurrencyExchanges)
     }
 
-    fun startPolling() {
+    fun processIntent(event: CurrencyExchangerIntent) {
+        when (event) {
+            is CurrencyExchangerIntent.StartPolling -> startPolling()
+            is CurrencyExchangerIntent.StopPolling -> stopPolling()
+            is CurrencyExchangerIntent.FetchRates -> fetchRates()
+            is CurrencyExchangerIntent.FetchBalances -> fetchBalances()
+            is CurrencyExchangerIntent.FetchCurrencyExchanges -> fetchCurrencyExchanges()
+            is CurrencyExchangerIntent.CalculateCommission -> calculateCommission(event.amount)
+            is CurrencyExchangerIntent.SaveCurrencyExchange -> saveCurrencyExchange(event.currencyExchange)
+            is CurrencyExchangerIntent.UpdateBalance -> updateBalance(event.currency, event.newBalance)
+            is CurrencyExchangerIntent.Refresh -> fetchRates()
+        }
+    }
+
+    private fun startPolling() {
         if (pollingJob?.isActive == true) return
         pollingJob = viewModelScope.launch {
             while (isActive) {
@@ -52,79 +58,70 @@ class CurrencyExchangerViewModel @Inject constructor(
         }
     }
 
-    fun stopPolling() {
+    private fun stopPolling() {
         pollingJob?.cancel()
         pollingJob = null
     }
 
-    fun fetchRates() {
+    private fun fetchRates() {
         viewModelScope.launch {
             try {
+                _state.update { it.copy(isLoading = true, error = null) }
                 val response = currencyExchangeUseCase.getCurrencyExchangeRates()
-                _currencyRates.value = response
-                Log.d(TAG, "Success: ${response.rates}")
-
+                _state.update { it.copy(rates = response, isLoading = false) }
             } catch (e: Exception) {
-                Log.e(TAG, "Error: ${e.message}", e)
+                _state.update { it.copy(isLoading = false, error = e.message) }
             }
         }
     }
 
-    fun fetchBalances(){
+    private fun fetchBalances() {
         viewModelScope.launch {
             try {
-                currencyExchangeUseCase.getBalances().collect { myBalances->
-                    _myBalances.value = myBalances
+                currencyExchangeUseCase.getBalances().collect { balances ->
+                    _state.update { it.copy(balances = balances) }
                 }
-
-            } catch (e: Exception){
-                Log.e(TAG, "Error: ${e.message}", e)
+            } catch (e: Exception) {
+                _state.update { it.copy(error = e.message) }
             }
-
         }
     }
 
-    fun fetchCurrencyExchanges(){
+    private fun fetchCurrencyExchanges() {
         viewModelScope.launch {
+            _state.update { it.copy(currencyExchanges = CurrencyExchangeUiState.Loading) }
+
             try {
-                currencyExchangeUseCase.getCurrencyExchanges().collect { currencyExchange->
-                    _currencyExchange.value = currencyExchange
+                currencyExchangeUseCase.getCurrencyExchanges().collect { result ->
+                    _state.update {
+                        it.copy(currencyExchanges = CurrencyExchangeUiState.Success(result))
+                    }
                 }
-
-            } catch (e: Exception){
-                Log.e(TAG, "Error: ${e.message}", e)
+            } catch (e: Exception) {
+                _state.update {
+                    it.copy(currencyExchanges = CurrencyExchangeUiState.Error(e.message))
+                }
             }
-
         }
     }
 
-    fun calculateCommission(amount: Double){
-        _commission.value = currencyExchangeUseCase.calculateCommission(amount)
-        Log.d("InvokeHere", "$amount ${_commission.value}")
+    private fun calculateCommission(amount: Double) {
+        val commission = currencyExchangeUseCase.calculateCommission(amount)
+        _state.update { it.copy(commission = commission) }
     }
 
-    fun saveCurrencyExchange(currencyExchange: CurrencyExchange){
+    private fun saveCurrencyExchange(exchange: CurrencyExchange) {
         viewModelScope.launch {
-            currencyExchangeUseCase.saveCurrencyExchange(currencyExchange)
+            currencyExchangeUseCase.saveCurrencyExchange(exchange)
         }
     }
 
-    fun updateBalance(currency: String, newBalance: Double){
+    private fun updateBalance(currency: String, newBalance: Double) {
         viewModelScope.launch {
             currencyExchangeUseCase.updateBalance(currency, newBalance)
         }
     }
-
-
-    fun refresh() {
-        viewModelScope.launch {
-            fetchRates()
-        }
-    }
-
-    companion object {
-        const val TAG = "CurrencyViewModel"
-    }
 }
+
 
 

@@ -1,5 +1,6 @@
 package dev.jaysonguillen.currencyexchanger.domain
 
+import android.util.Log
 import dev.jaysonguillen.currencyexchanger.core.utils.PrefsManager
 import dev.jaysonguillen.currencyexchanger.data.model.CurrencyExchange
 import dev.jaysonguillen.currencyexchanger.data.model.ExchangeRatesResponse
