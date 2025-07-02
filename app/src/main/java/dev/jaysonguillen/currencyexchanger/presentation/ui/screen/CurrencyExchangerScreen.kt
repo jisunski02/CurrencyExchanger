@@ -1,7 +1,6 @@
 package dev.jaysonguillen.currencyexchanger.presentation.ui.screen
 
 import android.util.Log
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,6 +13,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableDoubleStateOf
@@ -27,8 +27,9 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import dev.jaysonguillen.currencyexchanger.R
+import dev.jaysonguillen.currencyexchanger.presentation.effect.UiEffect
 import dev.jaysonguillen.currencyexchanger.presentation.intent.CurrencyExchangerIntent
-import dev.jaysonguillen.currencyexchanger.presentation.state.CurrencyExchangeUiState
+import dev.jaysonguillen.currencyexchanger.presentation.state.UiState
 import dev.jaysonguillen.currencyexchanger.presentation.ui.component.Header
 import dev.jaysonguillen.currencyexchanger.presentation.ui.dialog.SuccessConversionDialog
 import dev.jaysonguillen.currencyexchanger.presentation.ui.section.CurrencyExchangeSection
@@ -69,12 +70,11 @@ fun CurrencyConverterScreen(viewModel: CurrencyExchangerViewModel = hiltViewMode
                 receivedCurrency = currencyExchange.receivedCurrency
                 currentBalance = currencyExchange.currentBalance
 
-                showDialog = true
             }
         )
 
         when (val exchangeState = state.currencyExchanges) {
-            is CurrencyExchangeUiState.Loading -> {
+            is UiState.Loading -> {
                 Box(modifier = Modifier
                     .fillMaxSize(),
                     contentAlignment = Alignment.Center
@@ -83,7 +83,7 @@ fun CurrencyConverterScreen(viewModel: CurrencyExchangerViewModel = hiltViewMode
                 }
             }
 
-            is CurrencyExchangeUiState.Success -> {
+            is UiState.Success -> {
                 if (exchangeState.data.isNotEmpty()) {
                     CurrencyExchangeSection(exchangeState.data)
                 } else {
@@ -91,11 +91,20 @@ fun CurrencyConverterScreen(viewModel: CurrencyExchangerViewModel = hiltViewMode
                 }
             }
 
-            is CurrencyExchangeUiState.Error -> {
-                Text("Failed to load: ${exchangeState.message ?: "Unknown error"}")
+            is UiState.Error -> {
+                Text("Failed to load: ${exchangeState.message}")
             }
         }
 
+        LaunchedEffect(Unit) {
+            viewModel.effect.collect { effect ->
+                when (effect) {
+                    UiEffect.ShowSuccessExchangeDialog -> {
+                        showDialog = true
+                    }
+                }
+            }
+        }
 
         if (showDialog) {
             SuccessConversionDialog(
@@ -139,5 +148,4 @@ fun NoListDataUi(){
             tint = Color_Blue
         )
     }
-
 }

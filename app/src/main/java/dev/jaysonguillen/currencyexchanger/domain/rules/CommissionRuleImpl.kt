@@ -1,6 +1,6 @@
 package dev.jaysonguillen.currencyexchanger.domain.rules
 
-// First 5 transactions are free
+// First Nth transactions are free
 class FreeFirstTransactionsRule(private val freeCount: Int) : CommissionRule {
     override fun calculateCommission(transactionCount: Int, amount: Double): Double? {
         return if (transactionCount < freeCount) 0.0 else null
